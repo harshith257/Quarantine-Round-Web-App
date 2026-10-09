@@ -1,0 +1,756 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Ward Ledger</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Layout: a ward-round worklist. Sticky header + facility strip, role tabs, dense scannable rows, drawer for patient detail. */
+:root{
+  --bg:#EDF1F3; --surface:#FFFFFF; --surface2:#F4F7F8; --ink:#10212A; --muted:#566872; --line:#D3DCE1;
+  --accent:#0D6E6E; --accent-ink:#FFFFFF; --accent-soft:#D7EEEC;
+  --fever:#C23B2E; --fever-soft:#F8DEDA; --warn:#8F5A0C; --warn-soft:#F6E8CB; --ok:#2B7A4B; --ok-soft:#D9EEE1;
+  --display:'Familjen Grotesk','Segoe UI',system-ui,sans-serif;
+  --body:'IBM Plex Sans','Segoe UI',system-ui,sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0C1418; --surface:#141F25; --surface2:#1A2830; --ink:#E4EDF0; --muted:#8FA4AE; --line:#27373F;
+    --accent:#4FC3BC; --accent-ink:#06201F; --accent-soft:#12383A;
+    --fever:#F0776A; --fever-soft:#3A1E1B; --warn:#E5B35C; --warn-soft:#38290F; --ok:#6CCB93; --ok-soft:#14301F;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0C1418; --surface:#141F25; --surface2:#1A2830; --ink:#E4EDF0; --muted:#8FA4AE; --line:#27373F;
+  --accent:#4FC3BC; --accent-ink:#06201F; --accent-soft:#12383A;
+  --fever:#F0776A; --fever-soft:#3A1E1B; --warn:#E5B35C; --warn-soft:#38290F; --ok:#6CCB93; --ok-soft:#14301F;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:14px;line-height:1.45;padding-inline:16px;padding-block:0 40px}
+button,input,select,textarea{font:inherit;color:inherit}
+.wrap{max-width:1180px;margin-inline:auto}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance;letter-spacing:-.01em}
+h2{font-size:1.25rem}
+h3{font-size:1rem}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* header */
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--bg);padding-block:12px 8px}
+.top-in{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:10px;font-family:var(--display);font-weight:700;font-size:1.15rem}
+.mark{width:28px;height:28px;border-radius:7px;background:var(--accent);display:grid;place-items:center}
+.mark svg{display:block}
+.who{display:flex;align-items:center;gap:10px;min-width:0}
+.who .nm{font-weight:600}
+.who .rl{font-size:12px;color:var(--muted)}
+.strip{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:8px;padding:8px 12px;background:var(--surface);border:1px solid var(--line);border-radius:8px;font-size:12.5px;color:var(--muted)}
+.strip b{color:var(--ink);font-family:var(--mono);font-weight:500}
+.strip .full{color:var(--fever);font-weight:600}
+
+/* buttons */
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:7px;padding:7px 14px;cursor:pointer;font-weight:500;white-space:nowrap}
+.btn:hover{background:var(--surface2)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.danger{background:var(--fever);border-color:var(--fever);color:#fff}
+.btn.ghost{background:transparent}
+.btn.sm{padding:4px 10px;font-size:12.5px}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+.link{background:none;border:0;padding:0;cursor:pointer;font-weight:600;text-align:left;color:var(--ink)}
+.link:hover{color:var(--accent);text-decoration:underline}
+
+/* tabs & filters */
+.tabs{display:flex;gap:4px;overflow-x:auto;border-bottom:1px solid var(--line);margin-top:14px}
+.tab{background:none;border:0;border-bottom:3px solid transparent;padding:10px 14px;cursor:pointer;font-weight:500;color:var(--muted);white-space:nowrap}
+.tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent);font-weight:600}
+.bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-block:14px}
+.pills{display:flex;flex-wrap:wrap;gap:6px}
+.pill{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:5px 12px;cursor:pointer;font-size:13px}
+.pill[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.pill .n{font-family:var(--mono);margin-left:4px;opacity:.75}
+.search{flex:1 1 200px;min-width:0;max-width:320px;padding:7px 12px;border:1px solid var(--line);border-radius:7px;background:var(--surface)}
+
+/* panels */
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.panel-h{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid var(--line)}
+.panel-b{padding:16px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:14px}
+.stack{display:flex;flex-direction:column;gap:14px}
+.progress{height:8px;border-radius:99px;background:var(--line);overflow:hidden}
+.progress>i{display:block;height:100%;background:var(--accent)}
+
+/* rows */
+.row{display:grid;grid-template-columns:3.6rem minmax(0,1.5fr) minmax(0,1fr) minmax(0,1.3fr) auto;align-items:center;gap:6px 14px;padding:10px 16px;border-top:1px solid var(--line)}
+.row:first-child{border-top:0}
+.row.prio{background:var(--warn-soft)}
+.room{font-family:var(--mono);font-weight:500;background:var(--surface2);border:1px solid var(--line);border-radius:6px;padding:3px 0;text-align:center;font-size:12.5px}
+.c-name{min-width:0}
+.c-name .sub{font-size:12px;color:var(--muted)}
+.c-act{display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap}
+.c-chips{display:flex;gap:5px;flex-wrap:wrap}
+.fv{color:var(--fever)}
+.dots{display:inline-flex;gap:3px;vertical-align:middle;margin-right:6px}
+.dots i{width:9px;height:9px;border-radius:50%;border:1.5px solid var(--muted)}
+.dots i.on{background:var(--ok);border-color:var(--ok)}
+.chip{display:inline-block;padding:2px 8px;border-radius:99px;font-size:11.5px;font-weight:600;white-space:nowrap;background:var(--surface2);color:var(--muted);border:1px solid var(--line)}
+.chip.ok{background:var(--ok-soft);color:var(--ok);border-color:transparent}
+.chip.warn{background:var(--warn-soft);color:var(--warn);border-color:transparent}
+.chip.fever{background:var(--fever-soft);color:var(--fever);border-color:transparent}
+.chip.acc{background:var(--accent-soft);color:var(--accent);border-color:transparent}
+.done{font-size:12.5px;color:var(--ok);font-weight:600}
+.empty{padding:28px 16px;text-align:center;color:var(--muted)}
+@media (max-width:760px){
+  .row{grid-template-columns:3rem minmax(0,1fr)}
+  .row .c-temp,.row .c-chips{grid-column:2}
+  .row .c-act{grid-column:1/-1;justify-content:flex-start}
+}
+
+/* login */
+.login{max-width:900px;margin:40px auto 0}
+.login h1{font-size:clamp(1.7rem,4vw,2.4rem);margin-bottom:6px}
+.roles{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));gap:12px;margin-top:22px}
+.role{text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;cursor:pointer;display:flex;flex-direction:column;gap:6px;min-width:0}
+.role:hover{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.role .t{font-family:var(--display);font-weight:700;font-size:1.1rem}
+.role .live{margin-top:auto;padding-top:10px;font-family:var(--mono);font-size:12.5px;color:var(--accent)}
+
+/* kpis */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));gap:12px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.kpi .l{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.kpi .v{font-family:var(--display);font-size:1.9rem;font-weight:700;line-height:1.15}
+.kpi .s{font-size:12px;color:var(--muted)}
+.gauge{position:relative;height:16px;background:var(--surface2);border:1px solid var(--line);border-radius:4px;margin:26px 0 22px}
+.gauge .fill{position:absolute;inset:0 auto 0 0}
+.gauge .tick{position:absolute;top:-8px;bottom:-8px;width:2px;background:var(--ink)}
+.gauge .tick span{position:absolute;top:-17px;transform:translateX(-50%);font-size:11px;font-family:var(--mono);white-space:nowrap}
+.banner{padding:12px 16px;border-radius:8px;border:1px solid transparent;display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap;justify-content:space-between}
+.banner.bad{background:var(--fever-soft);color:var(--fever);border-color:var(--fever)}
+.banner.good{background:var(--ok-soft);color:var(--ok)}
+.banner.info{background:var(--warn-soft);color:var(--warn)}
+.banner b{display:block}
+.issue{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--line)}
+.issue:first-child{border-top:0;padding-top:0}
+.issue .num{font-family:var(--display);font-weight:700;font-size:1.4rem;min-width:2.4rem;text-align:right}
+.chart-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);padding:8px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:8px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+
+/* beds */
+.beds{display:grid;grid-template-columns:repeat(auto-fill,minmax(58px,1fr));gap:8px}
+.bed{border:1px solid var(--line);border-radius:7px;padding:6px 2px;text-align:center;cursor:pointer;background:var(--surface);font-family:var(--mono);font-size:12px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.bed small{font-size:10px;font-family:var(--body);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-inline:2px}
+.bed.occ{background:var(--accent-soft);border-color:transparent}
+.bed.fvr{background:var(--fever-soft)}
+.bed.clr{background:var(--ok-soft);border:1.5px solid var(--ok)}
+.bed.free{border-style:dashed;color:var(--muted);cursor:default;background:transparent}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12px;color:var(--muted);margin-top:14px}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px;border:1px solid var(--line)}
+
+/* forms */
+.field{display:flex;flex-direction:column;gap:4px;margin-bottom:12px;min-width:0}
+.field label,.lbl{font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.field input,.field select,.field textarea{padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--surface);width:100%;min-width:0}
+.field textarea{min-height:76px;resize:vertical}
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,160px),1fr));gap:12px}
+.temp-in{font-family:var(--display);font-size:2.2rem;font-weight:600;max-width:9rem}
+.hint{font-size:13px;font-weight:600;min-height:1.4em}
+.err{color:var(--fever);font-size:13px;min-height:1.2em}
+.choice{display:flex;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;margin-bottom:8px;cursor:pointer;align-items:flex-start}
+.choice input{margin-top:3px}
+.choice.dis{opacity:.55;cursor:not-allowed}
+
+/* modal / drawer */
+.scrim{position:fixed;inset:0;background:rgba(8,16,20,.55);z-index:40;display:flex;align-items:center;justify-content:center;padding:16px}
+.scrim.right{justify-content:flex-end;padding:0}
+.modal{background:var(--surface);color:var(--ink);border-radius:12px;width:min(520px,100%);max-height:calc(100% - 8px);overflow:auto;padding:20px;border:1px solid var(--line)}
+.drawer{background:var(--surface);width:min(560px,100%);height:100%;overflow:auto;padding:20px;border-left:1px solid var(--line);padding-top:calc(20px + env(safe-area-inset-top,0px))}
+.mh{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;margin-bottom:12px}
+.mf{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:8px}
+.who-card{background:var(--surface2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:14px}
+.tl{list-style:none;margin:0;padding:0}
+.tl li{display:flex;gap:12px;padding:8px 0;border-top:1px solid var(--line);font-size:13px}
+.tl li:first-child{border-top:0}
+.tl .tm{font-family:var(--mono);font-size:12px;color:var(--muted);min-width:7.6rem}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 18px;border-radius:8px;z-index:60;font-weight:500;max-width:calc(100% - 32px)}
+.foot{margin-top:28px;font-size:12px;color:var(--muted);display:flex;gap:14px;flex-wrap:wrap;justify-content:space-between}
+@media (prefers-reduced-motion:no-preference){.modal,.drawer{animation:in .16s ease-out}@keyframes in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}}
+</style>
+
+</head>
+<body>
+<div class="wrap" id="app"></div>
+<div id="modal-root"></div>
+<div id="toast-root"></div>
+
+<script>
+/* ============ constants & helpers ============ */
+const FEVER=38.0, BENCH=0.15, CAP=74, DAY=864e5, HR=36e5, STORE='wardledger.v1';
+const USERS={
+  nurse:{name:'Priya Nair',title:'Staff Nurse',blurb:'Record each patient’s daily temperature and see who is still missing.'},
+  doctor:{name:'Dr. Arjun Mehta',title:'Doctor',blurb:'See who has a reading and who is waiting, record visits, clear patients for discharge.'},
+  admin:{name:'Kavita Rao',title:'Admin Staff',blurb:'Register patients, manage the 74 rooms, and record discharges.'},
+  head:{name:'Dr. Sunita Iyer',title:'Head Doctor',blurb:'Watch daily operations and the mortality rate against the 15% benchmark.'}
+};
+const NURSES=['Priya Nair','Rahul Kamat','Fatima Sheikh','Joseph D’Souza'];
+const DOCTORS=['Dr. Arjun Mehta','Dr. Leena Kulkarni','Dr. Samir Qureshi'];
+const TREATMENTS=['Observation only','Antipyretic + oral fluids','IV fluids + antipyretic','Antiviral course (day 1–5)','Oxygen support + antiviral'];
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const p2=n=>String(n).padStart(2,'0');
+const dayKey=ts=>{const d=new Date(ts);return d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate())};
+const offKey=o=>{const d=new Date();d.setDate(d.getDate()-o);return dayKey(d)};
+const isToday=ts=>dayKey(ts)===dayKey(Date.now());
+const fmtT=ts=>{const d=new Date(ts);return p2(d.getHours())+':'+p2(d.getMinutes())};
+const fmtD=ts=>new Date(ts).toLocaleDateString('en-IN',{day:'numeric',month:'short'});
+const fmtDT=ts=>(isToday(ts)?'Today':fmtD(ts))+' '+fmtT(ts);
+const dayDiff=ts=>Math.round((new Date(dayKey(Date.now())+'T00:00:00')-new Date(dayKey(ts)+'T00:00:00'))/DAY);
+const relDay=ts=>{const d=dayDiff(ts);return d===0?'today':d===1?'yesterday':d+'d ago'};
+const roomLbl=n=>'R'+p2(n);
+const pct=x=>(x*100).toFixed(1)+'%';
+const hrsTxt=ms=>{const h=ms/HR;return h<1?Math.round(h*60)+' min':h<48?h.toFixed(h<10?1:0)+' h':Math.round(h/24)+' d'};
+
+/* ============ data ============ */
+let DB,S={role:null,tab:null,filter:null,search:''};
+
+function seed(){
+  const now=Date.now(); let s=11;
+  const rnd=()=>{s|=0;s=s+0x6D2B79F5|0;let t=Math.imul(s^s>>>15,1|s);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296};
+  const ri=(a,b)=>a+Math.floor(rnd()*(b-a+1));
+  const pick=a=>a[Math.floor(rnd()*a.length)];
+  const atDay=(o,h,m)=>{const d=new Date(now);d.setDate(d.getDate()-o);d.setHours(h,m,0,0);return d.getTime()};
+  const FN=['Aarav','Ishaan','Vihaan','Rohan','Kabir','Arjun','Sameer','Neha','Ananya','Diya','Meera','Isha','Priya','Sana','Farhan','Imran','Zoya','Kiran','Rahul','Manish','Deepa','Lakshmi','Suresh','Ramesh','Anil','Sunita','Pooja','Nikhil','Tanvi','Varun','Harsh','Riya','Aditi','Mohan','Geeta','Rekha','Vikram','Sanjay','Anjali','Naveen'];
+  const LN=['Sharma','Patil','Deshmukh','Khan','Iyer','Nair','Reddy','Gupta','Joshi','Kulkarni','Shah','Mehta','Singh','Das','Banerjee','Pillai','Menon','Chopra','Verma','Fernandes','D’Souza','Shaikh','Kapoor'];
+  const clearedAt={4:2,19:5,33:9,48:20,62:31}; // index -> hours ago
+  const dupSet=[3,12,27,41];let earlyN=0;
+  const patients=[];
+  for(let i=0;i<CAP;i++){
+    const cl=i in clearedAt;
+    let k; const r=rnd();
+    if(cl) k=ri(4,6); else k=r<.35?0:r<.55?1:r<.70?2:ri(3,6);
+    const todayPresent=cl||rnd()<.58;
+    const a=Math.min(14,Math.max(k+1,2)+ri(0,6));
+    const readings=[],visits=[];
+    for(let o=a;o>=0;o--){
+      if(o===0&&!todayPresent) continue;
+      if(o>0&&o>=k&&rnd()<.06) continue;
+      const temp=o<k?+(36.4+rnd()).toFixed(1):+Math.min(40.2,38.2+rnd()*1.6).toFixed(1);
+      const ts=o===0?Math.min(now-ri(5,60)*6e4,atDay(0,ri(7,10),ri(0,59))):atDay(o,ri(7,10),ri(0,59));
+      readings.push({ts,temp,nurse:pick(NURSES),recheck:false});
+    }
+    if(dupSet.includes(i)&&todayPresent){
+      const f=readings[readings.length-1];
+      readings.push({ts:Math.min(f.ts+ri(40,120)*6e4,now-6e4),temp:+(f.temp+(rnd()-.5)*.4).toFixed(1),nurse:pick(NURSES.filter(n=>n!==f.nurse)),recheck:false});
+    }
+    // visits
+    const seen={};
+    readings.forEach(rd=>{
+      const key=dayKey(rd.ts); if(seen[key]) return; seen[key]=1;
+      const old=!isToday(rd.ts);
+      if(old?rnd()<.85:rnd()<.45){
+        const v=Math.min(rd.ts+ri(30,150)*6e4,now-6e4);
+        visits.push({ts:v,doctor:pick(DOCTORS),notes:rd.temp>=FEVER?pick(['Persistent fever, hydration encouraged.','Fever trending down slowly.','Mild cough, SpO2 stable.','Continue current plan.']):pick(['Afebrile, comfortable.','Appetite improving.','No new symptoms.']),treatment:rd.temp>=FEVER?pick(TREATMENTS.slice(1)):TREATMENTS[0],decision:'continue',tempSeen:true});
+      }
+    });
+    if(!todayPresent&&(rnd()<.07||(earlyN<3&&i>20&&rnd()<.4))){earlyN++;visits.push({ts:Math.min(atDay(0,ri(9,11),ri(0,59)),now-6e4),doctor:pick(DOCTORS),notes:'Measured temperature during visit (no nurse reading yet).',treatment:'Observation only',decision:'continue',tempSeen:false})}
+    let status='admitted',cAt=null;
+    if(cl){status='cleared';cAt=now-clearedAt[i]*HR;visits.push({ts:cAt,doctor:pick(DOCTORS),notes:'Afebrile for 3 full days. Cleared for discharge.',treatment:'Observation only',decision:'clear',tempSeen:true})}
+    readings.sort((x,y)=>x.ts-y.ts); visits.sort((x,y)=>x.ts-y.ts);
+    patients.push({id:'QF-'+(1000+i),name:FN[i%40]+' '+LN[(i*7+3)%23],age:ri(19,81),sex:i%2?'F':'M',room:i+1,phone:'+91 9'+ri(10000,99999)+ri(10000,99999),admittedAt:atDay(a,ri(8,18),ri(0,59)),status,clearedAt:cAt,outcomeAt:null,priority:!todayPresent&&visits.length===0&&rnd()<.12,readings,visits});
+  }
+  // closed archive
+  const oc=[];for(let j=0;j<56;j++)oc.push(j<10?'deceased':'discharged');
+  for(let j=oc.length-1;j>0;j--){const q=Math.floor(rnd()*(j+1));[oc[j],oc[q]]=[oc[q],oc[j]]}
+  const archive=oc.map((o,j)=>{const at=now-rnd()*14*DAY-HR;return{id:'QF-'+(900+j),outcome:o,outcomeAt:at,clearedAt:o==='discharged'?at-ri(1,36)*HR:null}});
+  const log=[];
+  patients.filter(p=>p.status==='cleared').forEach(p=>log.push({ts:p.clearedAt,who:p.visits[p.visits.length-1].doctor,text:'cleared '+p.name+' ('+p.id+') for discharge'}));
+  log.push({ts:now-26*6e4,who:'Rahul Kamat',text:'recorded temperature for '+patients[10].name+' ('+patients[10].id+')'});
+  log.sort((x,y)=>y.ts-x.ts);
+  return{seedDay:dayKey(now),nextId:1075,patients,archive,log};
+}
+function save(){try{localStorage.setItem(STORE,JSON.stringify(DB))}catch(e){}}
+function load(){
+  try{const r=localStorage.getItem(STORE);if(r){const d=JSON.parse(r);if(d&&d.seedDay===dayKey(Date.now())){DB=d;return}}}catch(e){}
+  DB=seed();save();
+}
+
+/* ============ derived ============ */
+const active=()=>DB.patients.filter(p=>p.status==='admitted'||p.status==='cleared').sort((a,b)=>a.room-b.room);
+const todays=p=>p.readings.filter(r=>isToday(r.ts));
+const visitsToday=p=>p.visits.filter(v=>isToday(v.ts));
+function dailyMax(p){const m={};p.readings.forEach(r=>{const k=dayKey(r.ts);m[k]=Math.max(m[k]??-1,r.temp)});return m}
+function streak(p){
+  const m=dailyMax(p),todayDone=dayKey(Date.now()) in m;
+  let o=todayDone?0:1,n=0;
+  while(true){const k=offKey(o);if(k in m&&m[k]<FEVER){n++;o++}else break}
+  return{n,todayDone};
+}
+const eligible=p=>{if(p.status!=='admitted')return false;const s=streak(p);return s.todayDone&&s.n>=3};
+function metrics(){
+  const act=active();
+  const closed=DB.archive.map(a=>({outcome:a.outcome,at:a.outcomeAt,clearedAt:a.clearedAt}))
+    .concat(DB.patients.filter(p=>p.status==='discharged'||p.status==='deceased').map(p=>({outcome:p.status,at:p.outcomeAt,clearedAt:p.clearedAt})));
+  const deaths=closed.filter(c=>c.outcome==='deceased').length, disch=closed.filter(c=>c.outcome==='discharged').length;
+  const tot=deaths+disch, rate=tot?deaths/tot:0;
+  const wk=closed.filter(c=>c.at>Date.now()-7*DAY), wd=wk.filter(c=>c.outcome==='deceased').length;
+  const wrate=wk.length?wd/wk.length:0;
+  const delays=closed.filter(c=>c.outcome==='discharged'&&c.clearedAt).map(c=>c.at-c.clearedAt);
+  const avgDelay=delays.length?delays.reduce((a,b)=>a+b,0)/delays.length:0;
+  const tempDone=act.filter(p=>todays(p).length).length;
+  const visitDone=act.filter(p=>visitsToday(p).length).length;
+  const waiting=act.filter(p=>p.status==='cleared');
+  const dupes=act.reduce((n,p)=>n+Math.max(0,todays(p).filter(r=>!r.recheck).length-1),0);
+  const early=act.filter(p=>visitsToday(p).some(v=>!v.tempSeen)).length;
+  const longWait=waiting.filter(p=>Date.now()-p.clearedAt>6*HR).length;
+  return{act,deaths,disch,tot,rate,wk:wk.length,wrate,avgDelay,tempDone,visitDone,waiting,dupes,early,longWait,closed};
+}
+function addLog(who,text){DB.log.unshift({ts:Date.now(),who,text});DB.log=DB.log.slice(0,80)}
+const P=id=>DB.patients.find(p=>p.id===id);
+
+/* ============ actions on data ============ */
+function recordTemp(id,temp,recheck,reason){
+  const p=P(id),u=USERS.nurse.name;
+  p.readings.push({ts:Date.now(),temp,nurse:u,recheck:!!recheck,reason:reason||''});
+  p.priority=false;
+  addLog(u,(recheck?'re-checked ':'recorded temperature for ')+p.name+' ('+p.id+') '+temp.toFixed(1)+'°C');
+  save();
+}
+function recordVisit(id,f){
+  const p=P(id),u=USERS.doctor.name;
+  const tempSeen=todays(p).length>0;
+  p.visits.push({ts:Date.now(),doctor:u,notes:f.notes,treatment:f.treatment,decision:f.decision,tempSeen});
+  if(f.decision==='clear'){p.status='cleared';p.clearedAt=Date.now();addLog(u,'cleared '+p.name+' ('+p.id+') for discharge')}
+  else if(f.decision==='death'){p.status='deceased';p.outcomeAt=Date.now();addLog(u,'recorded death of '+p.name+' ('+p.id+'), room '+roomLbl(p.room)+' released')}
+  else addLog(u,'visited '+p.name+' ('+p.id+')');
+  save();
+}
+
+/* ============ view pieces ============ */
+const chip=(c,t)=>`<span class="chip ${c}">${t}</span>`;
+const dots=n=>`<span class="dots">${[0,1,2].map(i=>`<i class="${i<n?'on':''}"></i>`).join('')}</span>`;
+
+function patientRow(p,role){
+  const t=todays(p),sk=streak(p),last=p.readings[p.readings.length-1],vt=visitsToday(p);
+  const tDone=t.length>0;
+  const lastTxt=last?`<b class="mono ${last.temp>=FEVER?'fv':''}">${last.temp.toFixed(1)}°C</b> <span class="muted">${isToday(last.ts)?'today '+fmtT(last.ts):relDay(last.ts)}</span>`:'<span class="muted">No readings</span>';
+  const el=eligible(p);
+  let chips='';
+  chips+=tDone?chip('ok','Temp '+fmtT(t[0].ts)):chip(p.priority?'warn':'','Temp pending');
+  chips+=vt.length?chip('ok','Seen '+fmtT(vt[vt.length-1].ts)):chip('','Visit pending');
+  if(p.priority&&!tDone)chips+=chip('warn','Doctor waiting');
+  if(p.status==='cleared')chips+=chip('acc','Cleared · awaiting discharge');
+  else if(el)chips+=chip('ok','Eligible');
+  let act='';
+  if(role==='nurse'){
+    act=tDone?`<span class="done">Recorded ${fmtT(t[t.length-1].ts)}</span><button class="btn ghost sm" data-action="recheck" data-id="${p.id}">Re-check</button>`:`<button class="btn primary" data-action="temp" data-id="${p.id}">Record</button>`;
+  }else if(role==='doctor'){
+    if(p.status==='cleared')act=`<span class="done">Cleared ${fmtT(p.clearedAt)}</span>`;
+    else if(vt.length)act=`<span class="done">Seen ${fmtT(vt[vt.length-1].ts)}</span><button class="btn ghost sm" data-action="visit" data-id="${p.id}">Add note</button>`;
+    else if(tDone)act=`<button class="btn primary" data-action="visit" data-id="${p.id}">Visit</button>`;
+    else act=p.priority?`<button class="btn sm" disabled>Reading requested</button>`:`<button class="btn sm" data-action="request" data-id="${p.id}">Request reading</button>`;
+  }
+  return `<div class="row ${p.priority&&!tDone&&role==='nurse'?'prio':''}">
+    <div class="room">${roomLbl(p.room)}</div>
+    <div class="c-name"><button class="link" data-action="open" data-id="${p.id}">${esc(p.name)}</button><div class="sub">${p.id} · ${p.age}${p.sex} · Day ${dayDiff(p.admittedAt)+1}</div></div>
+    <div class="c-temp">${lastTxt}<div class="sub muted" style="font-size:12px">${dots(Math.min(sk.n,3))}${Math.min(sk.n,3)}/3 afebrile days</div></div>
+    <div class="c-chips">${chips}</div>
+    <div class="c-act">${act}</div>
+  </div>`;
+}
+function listMatch(p){
+  const q=S.search.trim().toLowerCase();if(!q)return true;
+  return p.name.toLowerCase().includes(q)||p.id.toLowerCase().includes(q)||String(p.room)===q||roomLbl(p.room).toLowerCase()===q;
+}
+function pills(defs){
+  return `<div class="pills">${defs.map(d=>`<button class="pill" aria-pressed="${S.filter===d.k}" data-action="filter" data-k="${d.k}">${d.l}<span class="n">${d.n}</span></button>`).join('')}</div>`;
+}
+const searchBox=()=>`<input class="search" id="search" type="search" placeholder="Search name, ID or room" value="${esc(S.search)}" aria-label="Search patients">`;
+function rowsOrEmpty(list,role,msg){return list.length?list.map(p=>patientRow(p,role)).join(''):`<div class="empty">${msg}</div>`}
+
+/* ============ role views ============ */
+function nurseView(){
+  const m=metrics(),act=m.act;
+  const pend=act.filter(p=>!todays(p).length),done=act.filter(p=>todays(p).length);
+  S.filter=S.filter||'pending';
+  let list=S.filter==='pending'?pend:S.filter==='done'?done:act;
+  list=list.filter(listMatch).sort((a,b)=>(b.priority&&!todays(b).length)-(a.priority&&!todays(a).length)||a.room-b.room);
+  const w=act.length?Math.round(done.length/act.length*100):0;
+  return `<div class="stack" style="margin-top:14px">
+    <div class="panel"><div class="panel-b">
+      <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px"><b>Today’s temperature round</b><span class="mono">${done.length} of ${act.length} recorded</span></div>
+      <div class="progress"><i style="width:${w}%"></i></div>
+      <div class="muted" style="margin-top:8px;font-size:12.5px">${pend.length?`${pend.length} patients still need a reading. Patients already recorded show a green tick, so nobody is measured twice.`:'Every patient has a reading today.'}</div>
+    </div></div>
+    <div class="bar" style="margin:0">${pills([{k:'pending',l:'Pending',n:pend.length},{k:'done',l:'Recorded',n:done.length},{k:'all',l:'All patients',n:act.length}])}${searchBox()}</div>
+    <div class="panel">${rowsOrEmpty(list,'nurse','No patients match.')}</div>
+  </div>`;
+}
+function doctorView(){
+  const m=metrics(),act=m.act.filter(p=>p.status==='admitted'||p.status==='cleared');
+  if(S.tab==='discharge')return doctorDischarge(m);
+  const ready=act.filter(p=>p.status==='admitted'&&todays(p).length&&!visitsToday(p).length);
+  const wait=act.filter(p=>p.status==='admitted'&&!todays(p).length&&!visitsToday(p).length);
+  const seen=act.filter(p=>visitsToday(p).length);
+  S.filter=S.filter||'ready';
+  let list=S.filter==='ready'?ready:S.filter==='wait'?wait:S.filter==='seen'?seen:act;
+  list=list.filter(listMatch);
+  return `<div class="stack" style="margin-top:14px">
+    <div class="kpis">
+      <div class="kpi"><div class="l">Ready to see</div><div class="v">${ready.length}</div><div class="s">Reading is in, no visit yet</div></div>
+      <div class="kpi"><div class="l">Waiting on reading</div><div class="v">${wait.length}</div><div class="s">Skip until the nurse records</div></div>
+      <div class="kpi"><div class="l">Seen today</div><div class="v">${seen.length}</div><div class="s">of ${act.length} patients</div></div>
+      <div class="kpi"><div class="l">Eligible to clear</div><div class="v">${act.filter(eligible).length}</div><div class="s">3 afebrile days confirmed</div></div>
+    </div>
+    <div class="bar" style="margin:0">${pills([{k:'ready',l:'Ready to see',n:ready.length},{k:'wait',l:'Waiting on reading',n:wait.length},{k:'seen',l:'Seen today',n:seen.length},{k:'all',l:'All',n:act.length}])}${searchBox()}</div>
+    <div class="panel">${rowsOrEmpty(list,'doctor','Nothing here right now.')}</div>
+  </div>`;
+}
+function doctorDischarge(m){
+  const el=m.act.filter(eligible),near=m.act.filter(p=>{if(p.status!=='admitted'||eligible(p))return false;const s=streak(p);return s.n>=2});
+  const row=(p,btn)=>{const s=streak(p);return `<div class="row" style="grid-template-columns:3.6rem minmax(0,1.5fr) minmax(0,1.6fr) auto">
+    <div class="room">${roomLbl(p.room)}</div>
+    <div class="c-name"><button class="link" data-action="open" data-id="${p.id}">${esc(p.name)}</button><div class="sub">${p.id} · Day ${dayDiff(p.admittedAt)+1}</div></div>
+    <div class="c-temp">${dots(Math.min(s.n,3))}<b class="mono">${Math.min(s.n,3)}/3</b> afebrile days<div class="sub muted" style="font-size:12px">${s.todayDone?'Today’s reading recorded':'Today’s reading still missing'}</div></div>
+    <div class="c-act">${btn}</div></div>`};
+  return `<div class="stack" style="margin-top:14px">
+    <div class="banner info"><div><b>Rule used</b>A patient is eligible after 3 consecutive days with every reading below ${FEVER.toFixed(1)}°C, including today’s reading. Clearing a patient notifies admin staff immediately.</div></div>
+    <div class="panel"><div class="panel-h"><h3>Eligible for discharge (${el.length})</h3></div>
+      ${el.length?el.map(p=>row(p,`<button class="btn primary" data-action="clear" data-id="${p.id}">Clear for discharge</button>`)).join(''):'<div class="empty">No one has reached 3 afebrile days yet.</div>'}</div>
+    <div class="panel"><div class="panel-h"><h3>Close to eligible (${near.length})</h3><span class="muted">2 days done, or today’s reading missing</span></div>
+      ${near.length?near.map(p=>row(p,streak(p).todayDone?'<span class="chip">1 more day</span>':`<button class="btn sm" data-action="request" data-id="${p.id}" ${p.priority?'disabled':''}>${p.priority?'Requested':'Request reading'}</button>`)).join(''):'<div class="empty">No one is close.</div>'}</div>
+    <div class="muted">${m.waiting.length} patients are already cleared and waiting for admin to record the discharge.</div>
+  </div>`;
+}
+function adminView(){
+  const m=metrics(),act=m.act;
+  if(S.tab==='admit')return adminAdmit(m);
+  if(S.tab==='discharge')return adminDischarge(m);
+  const free=CAP-act.length;
+  const beds=[];
+  const byRoom={};act.forEach(p=>byRoom[p.room]=p);
+  for(let r=1;r<=CAP;r++){
+    const p=byRoom[r];
+    if(!p)beds.push(`<div class="bed free" title="Free">${p2(r)}<small>Free</small></div>`);
+    else{
+      const last=p.readings[p.readings.length-1];
+      const cls=p.status==='cleared'?'clr':(last&&last.temp>=FEVER?'fvr':'occ');
+      beds.push(`<button class="bed ${cls}" data-action="open" data-id="${p.id}" title="${esc(p.name)}">${p2(r)}<small>${esc(p.name.split(' ')[0])}</small></button>`);
+    }
+  }
+  return `<div class="stack" style="margin-top:14px">
+    <div class="kpis">
+      <div class="kpi"><div class="l">Occupied</div><div class="v">${act.length}<span class="muted" style="font-size:1rem"> / ${CAP}</span></div><div class="s">${free?free+' rooms free':'<b class="fv">Facility full</b>'}</div></div>
+      <div class="kpi"><div class="l">Cleared, awaiting discharge</div><div class="v">${m.waiting.length}</div><div class="s">${m.longWait?`<b class="fv">${m.longWait} waiting over 6 h</b>`:'None waiting over 6 h'}</div></div>
+      <div class="kpi"><div class="l">Admitted today</div><div class="v">${DB.patients.filter(p=>isToday(p.admittedAt)).length}</div><div class="s">New registrations</div></div>
+    </div>
+    ${free?'':`<div class="banner bad"><div><b>No free rooms</b>Record a discharge to release a room before registering the next patient.</div><button class="btn" data-action="tab" data-k="discharge">Go to discharges</button></div>`}
+    <div class="panel"><div class="panel-h"><h3>Room map</h3><span class="muted">Select a room to view the patient</span></div>
+      <div class="panel-b"><div class="beds">${beds.join('')}</div>
+      <div class="legend"><span><i style="background:var(--accent-soft)"></i>Occupied</span><span><i style="background:var(--fever-soft)"></i>Last reading is a fever</span><span><i style="background:var(--ok-soft);border-color:var(--ok)"></i>Cleared, awaiting discharge</span><span><i style="border-style:dashed"></i>Free</span></div></div></div>
+  </div>`;
+}
+function adminAdmit(m){
+  const occ=new Set(m.act.map(p=>p.room)),freeRooms=[];
+  for(let r=1;r<=CAP;r++)if(!occ.has(r))freeRooms.push(r);
+  const today=DB.patients.filter(p=>isToday(p.admittedAt)).sort((a,b)=>b.admittedAt-a.admittedAt);
+  return `<div class="grid2" style="margin-top:14px;align-items:start">
+    <div class="panel"><div class="panel-h"><h3>Register new patient</h3>${chip(freeRooms.length?'ok':'fever',freeRooms.length+' rooms free')}</div><div class="panel-b">
+      ${freeRooms.length?'':`<div class="banner bad" style="margin-bottom:14px"><div><b>Facility is at full capacity (${CAP}/${CAP})</b>Registration is blocked until a patient is discharged.</div><button class="btn" data-action="tab" data-k="discharge">Go to discharges</button></div>`}
+      <form id="admitForm" data-form="admit" novalidate>
+        <div class="field"><label for="a_name">Full name</label><input id="a_name" required autocomplete="off" ${freeRooms.length?'':'disabled'}></div>
+        <div class="two">
+          <div class="field"><label for="a_age">Age</label><input id="a_age" type="number" min="0" max="120" inputmode="numeric" ${freeRooms.length?'':'disabled'}></div>
+          <div class="field"><label for="a_sex">Sex</label><select id="a_sex" ${freeRooms.length?'':'disabled'}><option>F</option><option>M</option><option>Other</option></select></div>
+        </div>
+        <div class="two">
+          <div class="field"><label for="a_phone">Emergency contact</label><input id="a_phone" inputmode="tel" placeholder="+91" ${freeRooms.length?'':'disabled'}></div>
+          <div class="field"><label for="a_room">Assign room</label><select id="a_room" ${freeRooms.length?'':'disabled'}>${freeRooms.map(r=>`<option value="${r}">${roomLbl(r)}</option>`).join('')}</select></div>
+        </div>
+        <div class="err" id="a_err"></div>
+        <div class="mf"><button class="btn primary" type="submit" ${freeRooms.length?'':'disabled'}>Register and assign room</button></div>
+      </form></div></div>
+    <div class="panel"><div class="panel-h"><h3>Registered today</h3></div>
+      ${today.length?today.map(p=>`<div class="row" style="grid-template-columns:3.6rem minmax(0,1fr) auto"><div class="room">${roomLbl(p.room)}</div><div class="c-name"><button class="link" data-action="open" data-id="${p.id}">${esc(p.name)}</button><div class="sub">${p.id} · ${p.age}${p.sex}</div></div><div>${chip('warn','Temp pending')}</div></div>`).join(''):'<div class="empty">No new patients registered yet today.</div>'}</div>
+  </div>`;
+}
+function adminDischarge(m){
+  const q=m.waiting.sort((a,b)=>a.clearedAt-b.clearedAt);
+  const recent=DB.patients.filter(p=>p.status==='discharged').sort((a,b)=>b.outcomeAt-a.outcomeAt).slice(0,6);
+  return `<div class="stack" style="margin-top:14px">
+    <div class="panel"><div class="panel-h"><h3>Cleared by doctors, awaiting discharge (${q.length})</h3><span class="muted">Longest wait first</span></div>
+      ${q.length?q.map(p=>{const w=Date.now()-p.clearedAt;return `<div class="row" style="grid-template-columns:3.6rem minmax(0,1.4fr) minmax(0,1.2fr) auto">
+        <div class="room">${roomLbl(p.room)}</div>
+        <div class="c-name"><button class="link" data-action="open" data-id="${p.id}">${esc(p.name)}</button><div class="sub">${p.id} · cleared by ${esc(p.visits[p.visits.length-1].doctor)}</div></div>
+        <div>${chip(w>6*HR?'fever':'warn','Waiting '+hrsTxt(w))}<div class="sub muted" style="font-size:12px">Cleared ${fmtDT(p.clearedAt)}</div></div>
+        <div class="c-act"><button class="btn primary" data-action="discharge" data-id="${p.id}">Record discharge</button></div></div>`}).join(''):'<div class="empty">No patients are waiting. Doctors will appear here the moment they clear someone.</div>'}</div>
+    <div class="panel"><div class="panel-h"><h3>Discharged in this session</h3></div>
+      ${recent.length?recent.map(p=>`<div class="row" style="grid-template-columns:3.6rem minmax(0,1fr) auto"><div class="room">${roomLbl(p.room)}</div><div class="c-name">${esc(p.name)}<div class="sub">${p.id}</div></div><div class="muted">${fmtDT(p.outcomeAt)} · room released</div></div>`).join(''):'<div class="empty">Discharges you record will be listed here.</div>'}</div>
+  </div>`;
+}
+
+function headView(){
+  const m=metrics();
+  if(S.tab==='patients'){
+    S.filter=S.filter||'all';
+    const list=m.act.filter(listMatch);
+    return `<div class="stack" style="margin-top:14px"><div class="bar" style="margin:0">${searchBox()}</div><div class="panel">${rowsOrEmpty(list,'head','No patients match.')}</div></div>`;
+  }
+  if(S.tab==='activity')return `<div class="panel" style="margin-top:14px"><div class="panel-h"><h3>Activity log</h3><span class="muted">Newest first</span></div><div class="panel-b"><ul class="tl">${DB.log.map(l=>`<li><span class="tm">${fmtDT(l.ts)}</span><span><b>${esc(l.who)}</b> ${esc(l.text)}</span></li>`).join('')}</ul></div></div>`;
+  const over=m.rate>BENCH, surv=1-m.rate;
+  const wrOver=m.wrate>BENCH;
+  const issues=[
+    {n:m.act.length-m.tempDone,t:'Patients with no temperature reading today',d:'Doctors cannot assess these patients yet.',sev:(m.act.length-m.tempDone)>20?'fever':'warn'},
+    {n:m.act.length-m.visitDone,t:'Patients not yet visited by a doctor today',d:'Each patient should be visited once per day.',sev:'warn'},
+    {n:m.dupes,t:'Repeat readings today with no re-check reason',d:'Wasted nurse time. New entries now require a reason.',sev:m.dupes?'warn':'ok'},
+    {n:m.early,t:'Visits made before a reading existed',d:'The doctor had to take the temperature personally.',sev:m.early?'warn':'ok'},
+    {n:m.waiting.length,t:'Cleared patients still occupying a room',d:m.longWait?m.longWait+' have waited over 6 hours.':'None waiting over 6 hours.',sev:m.longWait?'fever':m.waiting.length?'warn':'ok'}
+  ];
+  return `<div class="stack" style="margin-top:14px">
+    <div class="banner ${over?'bad':'good'}"><div><b>${over?'Mortality is above the benchmark':'Mortality is within the benchmark'}</b>${pct(m.rate)} of ${m.tot} closed cases ended in death, against an expected ${pct(BENCH)}. ${over?'That is '+((m.rate-BENCH)*100).toFixed(1)+' points over. Survival is '+pct(surv)+' against the 85% target.':'Survival is '+pct(surv)+' against the 85% target.'}</div></div>
+    <div class="kpis">
+      <div class="kpi"><div class="l">Occupancy</div><div class="v">${m.act.length}/${CAP}</div><div class="s">${pct(m.act.length/CAP)} of rooms</div></div>
+      <div class="kpi"><div class="l">Temps recorded today</div><div class="v">${m.tempDone}<span class="muted" style="font-size:1rem">/${m.act.length}</span></div><div class="s">${m.act.length-m.tempDone} pending</div></div>
+      <div class="kpi"><div class="l">Doctor visits today</div><div class="v">${m.visitDone}<span class="muted" style="font-size:1rem">/${m.act.length}</span></div><div class="s">${m.act.length-m.visitDone} pending</div></div>
+      <div class="kpi"><div class="l">Awaiting discharge</div><div class="v">${m.waiting.length}</div><div class="s">Average delay ${hrsTxt(m.avgDelay)}</div></div>
+    </div>
+    <div class="grid2">
+      <div class="panel"><div class="panel-h"><h3>Outcomes vs benchmark</h3><span class="muted">${m.tot} closed cases</span></div><div class="panel-b">
+        <div class="lbl">Mortality rate</div>
+        <div style="display:flex;align-items:baseline;gap:10px"><span class="kpi" style="border:0;padding:0"><span class="v ${over?'fv':''}">${pct(m.rate)}</span></span><span class="muted">${m.deaths} deaths</span></div>
+        <div class="gauge" aria-hidden="true"><div class="fill" style="width:${Math.min(100,m.rate/.3*100)}%;background:${over?'var(--fever)':'var(--ok)'}"></div><div class="tick" style="left:50%"><span>15% benchmark</span></div></div>
+        <div class="lbl">Survival rate</div>
+        <div style="display:flex;align-items:baseline;gap:10px"><span class="kpi" style="border:0;padding:0"><span class="v ${over?'fv':''}">${pct(surv)}</span></span><span class="muted">${m.disch} recovered</span></div>
+        <div class="gauge" aria-hidden="true"><div class="fill" style="width:${surv*100}%;background:${over?'var(--fever)':'var(--ok)'}"></div><div class="tick" style="left:85%"><span>85% target</span></div></div>
+        <div class="muted" style="font-size:12.5px">Last 7 days: ${m.wk} closed cases, mortality <b class="${wrOver?'fv':''}">${pct(m.wrate)}</b>. Mortality = deaths ÷ (deaths + discharges).</div>
+      </div></div>
+      <div class="panel"><div class="panel-h"><h3>Discharges and deaths, last 14 days</h3></div><div class="panel-b chart-wrap">${outcomeChart(m)}</div></div>
+    </div>
+    <div class="panel"><div class="panel-h"><h3>Operational problems right now</h3></div><div class="panel-b">
+      ${issues.map(i=>`<div class="issue"><div class="num ${i.sev==='fever'?'fv':''}">${i.n}</div><div style="flex:1;min-width:0"><b>${i.t}</b><div class="muted">${i.d}</div></div>${chip(i.sev,i.sev==='ok'?'OK':i.sev==='fever'?'Act now':'Watch')}</div>`).join('')}
+    </div></div>
+  </div>`;
+}
+function outcomeChart(m){
+  const days=[];for(let o=13;o>=0;o--)days.push({k:offKey(o),d:0,x:0,o});
+  m.closed.forEach(c=>{const day=days.find(d=>d.k===dayKey(c.at));if(day){c.outcome==='deceased'?day.x++:day.d++}});
+  const max=Math.max(4,...days.map(d=>Math.max(d.d,d.x)));
+  const W=560,H=210,L=26,B=24,T=10,iw=W-L-6,ih=H-B-T,bw=iw/14;
+  const y=v=>T+ih-(v/max)*ih;
+  let g='';
+  const step=max>8?2:1;
+  for(let v=0;v<=max;v+=step)g+=`<line x1="${L}" x2="${W-6}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)" stroke-width="1"/><text x="${L-6}" y="${y(v)+4}" text-anchor="end" font-size="10" fill="var(--muted)" font-family="IBM Plex Mono,monospace">${v}</text>`;
+  days.forEach((d,i)=>{
+    const x0=L+i*bw+bw*.12,w=bw*.34;
+    g+=`<rect x="${x0}" y="${y(d.d)}" width="${w}" height="${T+ih-y(d.d)}" fill="var(--accent)" rx="2"><title>${d.k}: ${d.d} discharged</title></rect>`;
+    g+=`<rect x="${x0+w+2}" y="${y(d.x)}" width="${w}" height="${T+ih-y(d.x)}" fill="var(--fever)" rx="2"><title>${d.k}: ${d.x} deaths</title></rect>`;
+    if(i%3===0||i===13)g+=`<text x="${L+i*bw+bw/2}" y="${H-7}" text-anchor="middle" font-size="10" fill="var(--muted)" font-family="IBM Plex Mono,monospace">${fmtD(new Date(d.k+'T00:00:00').getTime())}</text>`;
+  });
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="min-width:420px;display:block" role="img" aria-label="Daily discharges and deaths over 14 days">${g}</svg>
+  <div class="legend" style="margin-top:6px"><span><i style="background:var(--accent)"></i>Discharged</span><span><i style="background:var(--fever)"></i>Deaths</span></div>`;
+}
+
+/* ============ shell ============ */
+const TABS={
+  nurse:[['rounds','Today’s round']],
+  doctor:[['rounds','Rounds'],['discharge','Discharge review']],
+  admin:[['beds','Rooms'],['admit','Admissions'],['discharge','Discharges']],
+  head:[['overview','Overview'],['patients','All patients'],['activity','Activity log']]
+};
+function stripHTML(){
+  const m=metrics(),free=CAP-m.act.length;
+  return `<div class="strip"><span>${new Date().toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short'})}</span>
+    <span>Rooms <b class="${free?'':'full'}">${m.act.length}/${CAP}</b>${free?'':' <span class="full">full</span>'}</span>
+    <span>Temps <b>${m.tempDone}/${m.act.length}</b></span><span>Doctor visits <b>${m.visitDone}/${m.act.length}</b></span><span>Awaiting discharge <b>${m.waiting.length}</b></span></div>`;
+}
+function appView(){
+  const u=USERS[S.role],tabs=TABS[S.role];
+  const body=S.role==='nurse'?nurseView():S.role==='doctor'?doctorView():S.role==='admin'?adminView():headView();
+  return `<header class="top"><div class="top-in">
+    <div class="brand"><span class="mark"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"><path d="M1 8h3l2-5 3 10 2-5h4"/></svg></span>Ward Ledger</div>
+    <div class="who"><div style="text-align:right"><div class="nm">${esc(u.name)}</div><div class="rl">${u.title}</div></div><button class="btn sm" data-action="logout">Switch role</button></div>
+  </div>${stripHTML()}</header>
+  <nav class="tabs" role="tablist">${tabs.map(t=>`<button class="tab" role="tab" aria-selected="${S.tab===t[0]}" data-action="tab" data-k="${t[0]}">${t[1]}</button>`).join('')}</nav>
+  <main>${body}</main>
+  <div class="foot"><span>Prototype with sample data. Fever threshold ${FEVER.toFixed(1)}°C. Changes are saved in this browser.</span><button class="link muted" data-action="reset">Reset demo data</button></div>`;
+}
+function loginView(){
+  const m=metrics();
+  const ready=m.act.filter(p=>p.status==='admitted'&&todays(p).length&&!visitsToday(p).length).length;
+  const live={nurse:(m.act.length-m.tempDone)+' readings pending',doctor:ready+' patients ready to see',admin:m.waiting.length+' awaiting discharge',head:'Mortality '+pct(m.rate)};
+  return `<div class="login">
+    <div class="brand" style="margin-bottom:28px"><span class="mark"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"><path d="M1 8h3l2-5 3 10 2-5h4"/></svg></span>Ward Ledger</div>
+    <h1>Who is signing in?</h1>
+    <p class="muted" style="max-width:56ch;margin:0">One shared record for the isolation ward. Every reading, visit and discharge is visible to everyone who needs it, the moment it happens. Choose a role to try its workflow.</p>
+    <div class="roles">${Object.entries(USERS).map(([k,u])=>`<button class="role" data-action="login" data-k="${k}"><span class="t">${u.title}</span><span>${esc(u.name)}</span><span class="muted" style="font-size:13px">${u.blurb}</span><span class="live">${live[k]}</span></button>`).join('')}</div>
+  </div>`;
+}
+function render(){
+  const f=document.activeElement,keep=f&&f.id==='search'?f.selectionStart:null;
+  $('#app').innerHTML=S.role?appView():loginView();
+  if(keep!==null){const s=$('#search');if(s){s.focus();try{s.setSelectionRange(keep,keep)}catch(e){}}}
+}
+
+/* ============ modals ============ */
+function openModal(html,drawer){
+  $('#modal-root').innerHTML=`<div class="scrim ${drawer?'right':''}" data-action="scrim"><div class="${drawer?'drawer':'modal'}" role="dialog" aria-modal="true">${html}</div></div>`;
+  const f=$('#modal-root input:not([type=hidden]),#modal-root textarea');if(f&&!drawer)f.focus();
+}
+const closeModal=()=>{$('#modal-root').innerHTML=''};
+function toast(t){const r=$('#toast-root');r.innerHTML=`<div class="toast" role="status">${esc(t)}</div>`;clearTimeout(toast.t);toast.t=setTimeout(()=>r.innerHTML='',3600)}
+const whoCard=p=>`<div class="who-card"><b>${esc(p.name)}</b> <span class="muted">${p.id} · ${p.age}${p.sex} · Room ${roomLbl(p.room)}</span></div>`;
+
+function tempModal(id,recheck){
+  const p=P(id),t=todays(p);
+  openModal(`<div class="mh"><h2>${recheck?'Re-check temperature':'Record temperature'}</h2><button class="btn ghost sm" data-action="close" aria-label="Close">Close</button></div>
+  ${whoCard(p)}
+  ${t.length?`<div class="banner info" style="margin-bottom:14px"><div><b>Already recorded today</b>${t[t.length-1].temp.toFixed(1)}°C at ${fmtT(t[t.length-1].ts)} by ${esc(t[t.length-1].nurse)}. Only add a re-check if it is clinically needed.</div></div>`:''}
+  <form data-form="temp" data-id="${p.id}" data-recheck="${recheck?1:0}" novalidate>
+    <div class="field"><label for="t_val">Temperature (°C)</label><input class="temp-in" id="t_val" type="number" step="0.1" min="34" max="42" inputmode="decimal" placeholder="37.0" required></div>
+    <div class="hint" id="t_hint" aria-live="polite"></div>
+    ${recheck?`<div class="field"><label for="t_reason">Reason for re-check</label><select id="t_reason"><option>Doctor requested</option><option>Previous reading looks wrong</option><option>Change in symptoms</option></select></div>`:''}
+    <div class="two"><div class="field"><label>Time (automatic)</label><input value="${fmtT(Date.now())}" readonly></div><div class="field"><label>Recorded by</label><input value="${esc(USERS.nurse.name)}" readonly></div></div>
+    <div class="err" id="t_err"></div>
+    <div class="mf"><button class="btn" type="button" data-action="close">Cancel</button><button class="btn ${recheck?'primary':''}" type="submit" value="save">Save</button>${recheck?'':'<button class="btn primary" type="submit" value="next">Save and next pending</button>'}</div>
+  </form>`);
+}
+function visitModal(id){
+  const p=P(id),t=todays(p),sk=streak(p),el=eligible(p),vt=visitsToday(p);
+  const last=t[t.length-1];
+  openModal(`<div class="mh"><h2>Doctor visit</h2><button class="btn ghost sm" data-action="close">Close</button></div>
+  ${whoCard(p)}
+  <div class="banner ${last&&last.temp>=FEVER?'bad':'good'}" style="margin-bottom:14px"><div><b>Today’s reading: ${last.temp.toFixed(1)}°C</b>Recorded ${fmtT(last.ts)} by ${esc(last.nurse)}. ${Math.min(sk.n,3)} of 3 afebrile days.</div></div>
+  ${vt.length?`<div class="muted" style="margin-bottom:12px">Already seen today at ${fmtT(vt[vt.length-1].ts)}. This will be added as a follow-up note.</div>`:''}
+  <form data-form="visit" data-id="${p.id}" novalidate>
+    <div class="field"><label for="v_notes">Clinical notes</label><textarea id="v_notes" placeholder="Symptoms, observations, plan"></textarea></div>
+    <div class="field"><label for="v_tx">Treatment</label><select id="v_tx">${TREATMENTS.map(x=>`<option>${x}</option>`).join('')}</select></div>
+    <div class="lbl" style="margin-bottom:6px">Decision</div>
+    <label class="choice"><input type="radio" name="dec" value="continue" checked><span><b>Continue care</b><br><span class="muted">Keep in isolation, see again tomorrow.</span></span></label>
+    <label class="choice ${el?'':'dis'}"><input type="radio" name="dec" value="clear" ${el?'':'disabled'}><span><b>Clear for discharge</b><br><span class="muted">${el?'3 afebrile days confirmed. Admin staff will be notified.':'Not available. Needs 3 consecutive afebrile days including today.'}</span></span></label>
+    <label class="choice"><input type="radio" name="dec" value="death"><span><b>Record death</b><br><span class="muted">Closes the case and releases the room.</span></span></label>
+    <div class="err" id="v_err"></div>
+    <div class="mf"><button class="btn" type="button" data-action="close">Cancel</button><button class="btn primary" type="submit">Save visit</button></div>
+  </form>`);
+}
+function confirmModal(title,body,action,id,label,danger){
+  openModal(`<div class="mh"><h2>${title}</h2></div><p>${body}</p><div class="mf"><button class="btn" data-action="close">Cancel</button><button class="btn ${danger?'danger':'primary'}" data-action="${action}" data-id="${id}">${label}</button></div>`);
+}
+function chartSVG(p){
+  const rs=p.readings.slice(-24);
+  if(!rs.length)return '<div class="empty">No readings yet.</div>';
+  const W=540,H=200,L=34,R=12,T=12,B=26,lo=35.5,hi=41,iw=W-L-R,ih=H-T-B;
+  const y=v=>T+ih-((Math.min(hi,Math.max(lo,v))-lo)/(hi-lo))*ih;
+  const t0=rs[0].ts,t1=rs[rs.length-1].ts,x=ts=>rs.length<2||t1===t0?L+iw/2:L+((ts-t0)/(t1-t0))*iw;
+  let g='';
+  [36,37,38,39,40,41].forEach(v=>{g+=`<line x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}" stroke="${v===38?'var(--fever)':'var(--line)'}" stroke-width="1" ${v===38?'stroke-dasharray="5 4"':''}/><text x="${L-6}" y="${y(v)+4}" text-anchor="end" font-size="10" fill="${v===38?'var(--fever)':'var(--muted)'}" font-family="IBM Plex Mono,monospace">${v}</text>`});
+  const pts=rs.map(r=>x(r.ts)+','+y(r.temp)).join(' ');
+  g+=`<polyline points="${pts}" fill="none" stroke="var(--muted)" stroke-width="1.5"/>`;
+  rs.forEach(r=>{g+=`<circle cx="${x(r.ts)}" cy="${y(r.temp)}" r="4" fill="${r.temp>=FEVER?'var(--fever)':'var(--ok)'}" stroke="var(--surface)" stroke-width="1.5"><title>${r.temp.toFixed(1)}°C ${fmtDT(r.ts)}</title></circle>`});
+  g+=`<text x="${L}" y="${H-8}" font-size="10" fill="var(--muted)" font-family="IBM Plex Mono,monospace">${fmtD(t0)}</text><text x="${W-R}" y="${H-8}" text-anchor="end" font-size="10" fill="var(--muted)" font-family="IBM Plex Mono,monospace">${fmtD(t1)}</text>`;
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Temperature history chart">${g}</svg>`;
+}
+function drawer(id){
+  const p=P(id),sk=streak(p),el=eligible(p);
+  const rds=[...p.readings].reverse(),vs=[...p.visits].reverse();
+  const stat=p.status==='cleared'?chip('acc','Cleared for discharge'):p.status==='deceased'?chip('fever','Deceased'):p.status==='discharged'?chip('ok','Discharged'):el?chip('ok','Eligible for discharge'):chip('','In isolation');
+  const act=S.role==='nurse'&&p.status!=='deceased'?(todays(p).length?`<button class="btn" data-action="recheck" data-id="${p.id}">Re-check</button>`:`<button class="btn primary" data-action="temp" data-id="${p.id}">Record temperature</button>`)
+    :S.role==='doctor'&&p.status==='admitted'&&todays(p).length?`<button class="btn primary" data-action="visit" data-id="${p.id}">Record visit</button>`:'';
+  openModal(`<div class="mh"><div><h2>${esc(p.name)}</h2><div class="muted">${p.id} · ${p.age}${p.sex} · Room ${roomLbl(p.room)} · Day ${dayDiff(p.admittedAt)+1} · admitted ${fmtD(p.admittedAt)}</div></div><button class="btn ghost sm" data-action="close">Close</button></div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">${stat}${chip(todays(p).length?'ok':'warn',todays(p).length?'Temp recorded today':'Temp pending')}${chip(visitsToday(p).length?'ok':'',visitsToday(p).length?'Seen today':'Visit pending')}</div>
+  <div class="who-card">${dots(Math.min(sk.n,3))}<b>${Math.min(sk.n,3)} of 3</b> consecutive afebrile days${sk.todayDone?'':' · today’s reading missing'}</div>
+  <h3 style="margin:14px 0 6px">Temperature history</h3>${chartSVG(p)}
+  <div style="margin-block:8px 16px">${act}</div>
+  <h3 style="margin-bottom:4px">Readings</h3>
+  <ul class="tl">${rds.slice(0,12).map(r=>`<li><span class="tm">${fmtDT(r.ts)}</span><span><b class="mono ${r.temp>=FEVER?'fv':''}">${r.temp.toFixed(1)}°C</b> <span class="muted">by ${esc(r.nurse)}${r.recheck?' · re-check: '+esc(r.reason):''}</span></span></li>`).join('')||'<li class="muted">No readings.</li>'}</ul>
+  <h3 style="margin:16px 0 4px">Doctor visits</h3>
+  <ul class="tl">${vs.slice(0,8).map(v=>`<li><span class="tm">${fmtDT(v.ts)}</span><span><b>${esc(v.doctor)}</b>${v.decision==='clear'?' '+chip('acc','Cleared'):v.decision==='death'?' '+chip('fever','Death recorded'):''}${v.tempSeen?'':' '+chip('warn','No reading yet')}<br>${esc(v.notes||'No notes')}<br><span class="muted">${esc(v.treatment)}</span></span></li>`).join('')||'<li class="muted">No visits yet.</li>'}</ul>`,true);
+}
+
+/* ============ events ============ */
+function nextPending(afterRoom){
+  const pend=active().filter(p=>!todays(p).length);
+  return pend.find(p=>p.room>afterRoom)||pend[0];
+}
+const ACT={
+  login:d=>{S.role=d.k;S.tab=TABS[d.k][0][0];S.filter=null;S.search='';render();window.scrollTo(0,0)},
+  logout:()=>{S.role=null;closeModal();render()},
+  tab:d=>{S.tab=d.k;S.filter=null;S.search='';closeModal();render()},
+  filter:d=>{S.filter=d.k;render()},
+  open:d=>drawer(d.id),
+  close:()=>closeModal(),
+  scrim:(d,el,e)=>{if(e.target===el)closeModal()},
+  temp:d=>tempModal(d.id,false),
+  recheck:d=>tempModal(d.id,true),
+  visit:d=>visitModal(d.id),
+  request:d=>{const p=P(d.id);p.priority=true;addLog(USERS.doctor.name,'requested a temperature reading for '+p.name+' ('+p.id+')');save();toast('Nurses will see '+p.name+' at the top of their list');render()},
+  clear:d=>{
+    const p=P(d.id);recordVisit(d.id,{notes:'Afebrile for 3 consecutive days. Cleared for discharge.',treatment:'Observation only',decision:'clear'});
+    toast(p.name+' cleared. Admin staff notified.');render();
+  },
+  discharge:d=>{const p=P(d.id);confirmModal('Record discharge','Mark <b>'+esc(p.name)+'</b> ('+p.id+') as discharged and release room <b>'+roomLbl(p.room)+'</b>?','discharge2',p.id,'Confirm discharge')},
+  discharge2:d=>{
+    const p=P(d.id);p.status='discharged';p.outcomeAt=Date.now();addLog(USERS.admin.name,'recorded discharge of '+p.name+' ('+p.id+'), room '+roomLbl(p.room)+' released');save();closeModal();toast('Discharged. Room '+roomLbl(p.room)+' is free.');render();
+  },
+  reset:()=>{DB=seed();save();closeModal();toast('Demo data reset');render()}
+};
+document.addEventListener('click',e=>{
+  const el=e.target.closest('[data-action]');if(!el)return;
+  const fn=ACT[el.dataset.action];if(fn)fn(el.dataset,el,e);
+});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal()});
+document.addEventListener('input',e=>{
+  if(e.target.id==='search'){S.search=e.target.value;render()}
+  if(e.target.id==='t_val'){
+    const v=parseFloat(e.target.value),h=$('#t_hint');if(!h)return;
+    if(isNaN(v)){h.textContent='';return}
+    h.innerHTML=v>=FEVER?'<span class="fv">Fever (at or above '+FEVER.toFixed(1)+'°C)</span>':v<35?'<span class="muted">Unusually low, please check the reading</span>':'<span style="color:var(--ok)">No fever</span>';
+  }
+});
+document.addEventListener('submit',e=>{
+  e.preventDefault();const f=e.target,kind=f.dataset.form;
+  if(kind==='temp'){
+    const v=parseFloat($('#t_val').value),err=$('#t_err');
+    if(isNaN(v)||v<34||v>42){err.textContent='Enter a temperature between 34.0 and 42.0 °C.';return}
+    const p=P(f.dataset.id),re=f.dataset.recheck==='1',reason=re?$('#t_reason').value:'';
+    const room=p.room;
+    recordTemp(p.id,Math.round(v*10)/10,re,reason);
+    const wantNext=e.submitter&&e.submitter.value==='next';
+    closeModal();render();
+    if(wantNext){const n=nextPending(room);if(n){toast('Saved '+p.name+'. Next: '+n.name);tempModal(n.id,false);return}toast('Saved. Every patient now has a reading.');return}
+    toast('Saved '+v.toFixed(1)+'°C for '+p.name);
+  }
+  if(kind==='visit'){
+    const dec=f.querySelector('input[name=dec]:checked').value,notes=$('#v_notes').value.trim();
+    if(dec!=='continue'&&!notes){$('#v_err').textContent='Add a short clinical note for this decision.';return}
+    const p=P(f.dataset.id);
+    recordVisit(p.id,{notes:notes||'Routine visit.',treatment:$('#v_tx').value,decision:dec});
+    closeModal();render();
+    toast(dec==='clear'?p.name+' cleared. Admin staff notified.':dec==='death'?'Death recorded. Room '+roomLbl(p.room)+' released.':'Visit saved for '+p.name);
+  }
+  if(kind==='admit'){
+    const name=$('#a_name').value.trim(),age=parseInt($('#a_age').value,10),err=$('#a_err');
+    if(!name){err.textContent='Enter the patient’s full name.';return}
+    if(isNaN(age)||age<0||age>120){err.textContent='Enter a valid age.';return}
+    const room=parseInt($('#a_room').value,10);
+    if(active().some(p=>p.room===room)){err.textContent='That room was just taken. Pick another.';return}
+    if(active().length>=CAP){err.textContent='Facility is full.';return}
+    const id='QF-'+(DB.nextId++);
+    DB.patients.push({id,name,age,sex:$('#a_sex').value,room,phone:$('#a_phone').value,admittedAt:Date.now(),status:'admitted',clearedAt:null,outcomeAt:null,priority:false,readings:[],visits:[]});
+    addLog(USERS.admin.name,'registered '+name+' ('+id+') in room '+roomLbl(room));save();render();toast(name+' registered in room '+roomLbl(room));
+  }
+});
+
+load();render();
+</script>
+
+</body>
+</html>
